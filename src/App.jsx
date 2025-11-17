@@ -40,14 +40,16 @@ export default function App() {
       setPort(selectedPort);
       setIsConnected(true);
 
+      // Crear stream de lectura
       const textDecoder = new TextDecoderStream();
-      selectedPort.readable.pipeTo(textDecoder.writable);
-      const inputStream = textDecoder.readable;
-      const newReader = inputStream.getReader();
-      setReader(newReader);
-
+      const readableStreamClosed = selectedPort.readable.pipeTo(textDecoder.writable);
+      const reader = textDecoder.readable.getReader();
+      
+      setReader(reader);
       console.log('✅ Lector configurado, esperando datos...');
-      readSerialData(newReader);
+
+      // Leer datos
+      readSerialData(reader);
       
     } catch (error) {
       console.error('❌ Error completo:', error);
@@ -69,56 +71,78 @@ export default function App() {
   // Leer datos seriales
   const readSerialData = async (reader) => {
     let buffer = '';
+    console.log('🎧 Iniciando lectura de datos...');
+    
     try {
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('⏹️ Lectura terminada');
+          break;
+        }
         
+        console.log('📥 Datos crudos recibidos:', value);
         buffer += value;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
           const trimmedLine = line.trim();
-          console.log('📡 Línea:', trimmedLine);
+          console.log('📡 Línea completa:', trimmedLine);
           
           if (trimmedLine.includes('Load_cell output val:')) {
+            console.log('✅ Línea de peso detectada!');
             const weightMatch = trimmedLine.match(/Load_cell output val:\s*([-+]?\d*\.?\d+)/);
+            
             if (weightMatch) {
               const weight = parseFloat(weightMatch[1]);
-              console.log('⚖️ Peso:', weight);
+              console.log('⚖️ Peso extraído:', weight);
+              
               if (!isNaN(weight)) {
+                console.log('✅ Actualizando peso a:', weight);
                 setCurrentWeight(weight);
+              } else {
+                console.log('❌ Peso no es un número válido');
               }
+            } else {
+              console.log('❌ No se pudo extraer el peso de la línea');
             }
           }
         }
       }
     } catch (error) {
-      console.error('❌ Error:', error);
+      console.error('❌ Error en lectura:', error);
       setIsConnected(false);
     }
   };
 
   // Desconectar
   const disconnect = async () => {
+    console.log('🔌 Desconectando...');
+    
     if (reader) {
       try {
         await reader.cancel();
+        console.log('✅ Reader cancelado');
       } catch (e) {
-        console.log('Error cancelando reader:', e);
+        console.log('⚠️ Error cancelando reader:', e);
       }
       setReader(null);
     }
+    
     if (port) {
       try {
         await port.close();
+        console.log('✅ Puerto cerrado');
       } catch (e) {
-        console.log('Error cerrando puerto:', e);
+        console.log('⚠️ Error cerrando puerto:', e);
       }
       setPort(null);
     }
+    
     setIsConnected(false);
+    setCurrentWeight(0);
+    console.log('✅ Desconectado completamente');
   };
 
   // Guardar registro
